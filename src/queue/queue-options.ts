@@ -1,25 +1,32 @@
 import { optionalEnv, requiredEnv } from '../env';
-import type { QueueMode, QueueModuleOptions } from './queue.interface';
+import type { MessagingPackage, QueueModuleOptions } from './queue.interface';
 
-const SUPPORTED_QUEUE_MODES = new Set<QueueMode>([
+const SUPPORTED_PACKAGES = new Set<MessagingPackage>([
   'azure-sdk',
   'nest-js-tools',
 ]);
 
-export function queueModeFromEnv(): QueueMode {
-  const mode = optionalEnv('QUEUE_MODE', 'azure-sdk') as QueueMode;
+export function usePackageFromEnv(): MessagingPackage {
+  const usePackage = optionalEnv(
+    'USE_PACKAGE',
+    'azure-sdk',
+  ) as MessagingPackage;
 
-  if (!SUPPORTED_QUEUE_MODES.has(mode)) {
-    throw new Error(`Unsupported QUEUE_MODE: ${mode}`);
+  if (!SUPPORTED_PACKAGES.has(usePackage)) {
+    throw new Error(`Unsupported USE_PACKAGE: ${usePackage}`);
   }
 
-  return mode;
+  return usePackage;
 }
 
-export function queueOptions(queueName: string): QueueModuleOptions {
+export function queueOptions(
+  queueName: string,
+  enableConsumer = true,
+): QueueModuleOptions {
   return {
-    mode: queueModeFromEnv(),
+    usePackage: usePackageFromEnv(),
     connectionUrl: requiredEnv('AZURE_SERVICE_BUS_CONNECTION_STRING'),
     queueName,
+    enableConsumer,
   };
 }

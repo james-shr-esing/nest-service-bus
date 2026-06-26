@@ -11,8 +11,9 @@ import { getQueueToken } from './queue.tokens';
 export class QueueModule {
   static forRoot(options: QueueModuleOptions): DynamicModule {
     const queueToken = getQueueToken(options.queueName);
+    const enableConsumer = options.enableConsumer ?? true;
 
-    if (options.mode === 'azure-sdk') {
+    if (options.usePackage === 'azure-sdk') {
       const queueProvider: Provider = {
         provide: queueToken,
         useFactory: () =>
@@ -27,19 +28,6 @@ export class QueueModule {
     }
 
     const routingKey = options.queueName;
-    const bridgeProviderToken = `${queueToken}:nest-js-tools-bridge`;
-
-    class NestJsToolsQueueBridge {
-      constructor(private readonly queue: NestJsToolsQueueService<object>) {}
-
-      async handle(payload: object): Promise<void> {
-        await this.queue.handle(payload);
-      }
-    }
-
-    MessageHandler(routingKey)(NestJsToolsQueueBridge);
-    Inject(queueToken)(NestJsToolsQueueBridge, undefined, 0);
-
     const queueProvider: Provider = {
       provide: queueToken,
       useFactory: (messageBus: IMessageBus) =>
@@ -47,14 +35,31 @@ export class QueueModule {
       inject: [getQueueBusName(options.queueName)],
     };
 
-    const bridgeProvider: Provider = {
-      provide: bridgeProviderToken,
-      useClass: NestJsToolsQueueBridge,
-    };
+    const providers: Provider[] = [queueProvider];
+
+    if (enableConsumer) {
+      const bridgeProviderToken = `${queueToken}:nest-js-tools-bridge`;
+
+      class NestJsToolsQueueBridge {
+        constructor(private readonly queue: NestJsToolsQueueService<object>) {}
+
+        async handle(payload: object): Promise<void> {
+          await this.queue.handle(payload);
+        }
+      }
+
+      MessageHandler(routingKey)(NestJsToolsQueueBridge);
+      Inject(queueToken)(NestJsToolsQueueBridge, undefined, 0);
+
+      providers.push({
+        provide: bridgeProviderToken,
+        useClass: NestJsToolsQueueBridge,
+      });
+    }
 
     return {
       module: QueueModule,
-      providers: [queueProvider, bridgeProvider],
+      providers,
       exports: [queueProvider],
     };
   }

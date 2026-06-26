@@ -1,11 +1,28 @@
 import { Module } from '@nestjs/common';
-import { QueueModule } from '../../queue';
-import { FUND_TRANSACTION_QUEUE } from '../../queue/queue-names';
-import { queueOptions } from '../../queue/queue-options';
+import { EventModule } from '../../event';
+import {
+  FUND_TRANSACTION_SUBSCRIPTION,
+  FUND_TRANSACTION_TOPIC,
+} from '../../event/event-names';
+import { eventOptions } from '../../event/event-options';
+import { getFundTransactionSessionId } from '../fund-transaction-session.util';
+import type { FundDomainEventNotificationPayload } from '../queue-payloads';
 import { FundProducer } from './fund.producer';
 
 @Module({
-  imports: [QueueModule.forRoot(queueOptions(FUND_TRANSACTION_QUEUE))],
+  imports: [
+    EventModule.forRoot(
+      eventOptions<FundDomainEventNotificationPayload>(
+        FUND_TRANSACTION_TOPIC,
+        FUND_TRANSACTION_SUBSCRIPTION,
+        false,
+        {
+          useSessions: true,
+          sessionIdFactory: getFundTransactionSessionId,
+        },
+      ),
+    ),
+  ],
   providers: [FundProducer],
 })
 export class FundModule {}

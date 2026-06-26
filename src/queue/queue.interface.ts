@@ -1,4 +1,4 @@
-export type QueueMode = 'azure-sdk' | 'nest-js-tools';
+export type MessagingPackage = 'azure-sdk' | 'nest-js-tools';
 
 export type QueueMessageHandler<TPayload> = (
   payload: TPayload,
@@ -10,7 +10,8 @@ export interface Queue<TPayload = unknown> {
 }
 
 export interface QueueModuleOptions {
-  mode: QueueMode;
+  usePackage: MessagingPackage;
   connectionUrl: string;
   queueName: string;
+  enableConsumer?: boolean;
 }

@@ -4,10 +4,10 @@ import {
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
+import { FUND_TRANSACTION_TOPIC } from '../../event/event-names';
+import { InjectEvent } from '../../event/event.tokens';
+import type { EventBus } from '../../event';
 import { optionalNumberEnv } from '../../env';
-import { FUND_TRANSACTION_QUEUE } from '../../queue/queue-names';
-import { InjectQueue } from '../../queue/queue.tokens';
-import type { Queue } from '../../queue';
 import type { FundDomainEventNotificationPayload } from '../queue-payloads';
 
 @Injectable()
@@ -16,8 +16,8 @@ export class FundProducer implements OnApplicationBootstrap, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
 
   constructor(
-    @InjectQueue(FUND_TRANSACTION_QUEUE)
-    private readonly fundTransactionQueue: Queue<FundDomainEventNotificationPayload>,
+    @InjectEvent(FUND_TRANSACTION_TOPIC)
+    private readonly fundTransactionEvent: EventBus<FundDomainEventNotificationPayload>,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -61,13 +61,13 @@ export class FundProducer implements OnApplicationBootstrap, OnModuleDestroy {
     };
 
     try {
-      await this.fundTransactionQueue.send(payload);
+      await this.fundTransactionEvent.publish(payload);
       this.logger.log(
-        `Sent ${payload.eventKey} ${payload.resourceIdentifier} to ${FUND_TRANSACTION_QUEUE}`,
+        `Published ${payload.eventKey} ${payload.resourceIdentifier} to topic ${FUND_TRANSACTION_TOPIC}`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to send fund event: ${message}`);
+      this.logger.error(`Failed to publish fund event: ${message}`);
     }
   }
 }

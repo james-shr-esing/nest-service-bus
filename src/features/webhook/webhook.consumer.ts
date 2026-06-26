@@ -1,8 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import {
-  FUND_TRANSACTION_QUEUE,
-  WEBHOOK_DELIVERY_QUEUE,
-} from '../../queue/queue-names';
+import { FUND_TRANSACTION_TOPIC } from '../../event/event-names';
+import { InjectEvent } from '../../event/event.tokens';
+import type { EventBus } from '../../event';
+import { WEBHOOK_DELIVERY_QUEUE } from '../../queue/queue-names';
 import { InjectQueue } from '../../queue/queue.tokens';
 import { WebhookDeliveryStoreService } from '../webhook-delivery-store.service';
 import type { Queue } from '../../queue';
@@ -20,15 +20,15 @@ export class WebhookConsumer implements OnModuleInit {
   private readonly logger = new Logger(WebhookConsumer.name);
 
   constructor(
-    @InjectQueue(FUND_TRANSACTION_QUEUE)
-    private readonly fundTransactionQueue: Queue<FundDomainEventNotificationPayload>,
+    @InjectEvent(FUND_TRANSACTION_TOPIC)
+    private readonly fundTransactionEvent: EventBus<FundDomainEventNotificationPayload>,
     @InjectQueue(WEBHOOK_DELIVERY_QUEUE)
     private readonly webhookDeliveryQueue: Queue<WebhookDeliveryExecutionPayload>,
     private readonly deliveryStore: WebhookDeliveryStoreService,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.fundTransactionQueue.receive(async (payload) => {
+    await this.fundTransactionEvent.subscribe(async (payload) => {
       const deliveryId = crypto.randomUUID();
       const now = new Date().toISOString();
       const deliveryPayload = this.toWebhookDeliveryPayload(

@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { optionalEnv, optionalNumberEnv } from '../../env';
 import { WEBHOOK_DELIVERY_QUEUE } from '../../queue/queue-names';
 import { InjectQueue } from '../../queue/queue.tokens';
 import { WebhookDeliveryStoreService } from '../webhook-delivery-store.service';
@@ -12,6 +13,19 @@ import type {
 @Injectable()
 export class DeliveryConsumer implements OnModuleInit {
   private readonly logger = new Logger(DeliveryConsumer.name);
+  private readonly instanceId = optionalEnv(
+    'INSTANCE_ID',
+    `pid-${process.pid}`,
+  );
+  private readonly failFirstAttempts = optionalNumberEnv(
+    'WEBHOOK_DELIVERY_FAIL_FIRST_ATTEMPTS',
+    0,
+  );
+  private readonly processingDelayMs = optionalNumberEnv(
+    'WEBHOOK_DELIVERY_PROCESSING_DELAY_MS',
+    0,
+  );
+  private readonly attempts = new Map<string, number>();
 
   constructor(
     @InjectQueue(WEBHOOK_DELIVERY_QUEUE)
@@ -20,7 +34,12 @@ export class DeliveryConsumer implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.webhookDeliveryQueue.receive((payload) => {
+    await this.webhookDeliveryQueue.receive(async (payload) => {
+      const attempt = this.nextAttempt(payload.deliveryId);
+
+      this.logger.log(
+        `[${this.instanceId}] Received delivery job ${payload.deliveryId}; localAttempt=${attempt}`,
+      );
       this.printFindDeliveryById(payload.deliveryId);
       const snapshot = this.deliveryStore.get(payload.deliveryId);
 
@@ -34,10 +53,37 @@ export class DeliveryConsumer implements OnModuleInit {
       this.printLoadedDelivery(snapshot);
       this.printUpdateDeliveryStatus(payload.deliveryId, 'DELIVERING');
       this.deliveryStore.updateStatus(payload.deliveryId, 'DELIVERING');
+
+      if (this.processingDelayMs > 0) {
+        this.logger.log(
+          `[${this.instanceId}] Delaying delivery job ${payload.deliveryId} for ${this.processingDelayMs}ms`,
+        );
+        await this.delay(this.processingDelayMs);
+      }
+
+      if (attempt <= this.failFirstAttempts) {
+        this.logger.warn(
+          `[${this.instanceId}] Throwing test error for ${payload.deliveryId}; localAttempt=${attempt}`,
+        );
+        throw new Error(
+          `Intentional delivery failure for ${payload.deliveryId} on local attempt ${attempt}`,
+        );
+      }
+
       this.printPostEndpoint(snapshot);
       this.printUpdateDeliveryStatus(payload.deliveryId, 'SUCCESS');
       this.deliveryStore.updateStatus(payload.deliveryId, 'SUCCESS');
     });
+  }
+
+  private nextAttempt(deliveryId: string): number {
+    const attempt = (this.attempts.get(deliveryId) ?? 0) + 1;
+    this.attempts.set(deliveryId, attempt);
+    return attempt;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private printFindDeliveryById(deliveryId: string): void {

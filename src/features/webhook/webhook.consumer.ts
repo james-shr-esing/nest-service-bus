@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { FUND_TRANSACTION_TOPIC } from '../../event/event-names';
 import { InjectEvent } from '../../event/event.tokens';
 import type { EventBus } from '../../event';
+import { optionalEnv, optionalNumberEnv } from '../../env';
 import { WEBHOOK_DELIVERY_QUEUE } from '../../queue/queue-names';
 import { InjectQueue } from '../../queue/queue.tokens';
 import { WebhookDeliveryStoreService } from '../webhook-delivery-store.service';
@@ -18,6 +19,14 @@ import { WEBHOOK_API_VERSION } from '../queue-payloads';
 @Injectable()
 export class WebhookConsumer implements OnModuleInit {
   private readonly logger = new Logger(WebhookConsumer.name);
+  private readonly instanceId = optionalEnv(
+    'INSTANCE_ID',
+    `pid-${process.pid}`,
+  );
+  private readonly eventProcessingDelayMs = optionalNumberEnv(
+    'WEBHOOK_EVENT_PROCESSING_DELAY_MS',
+    0,
+  );
 
   constructor(
     @InjectEvent(FUND_TRANSACTION_TOPIC)
@@ -29,6 +38,17 @@ export class WebhookConsumer implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.fundTransactionEvent.subscribe(async (payload) => {
+      this.logger.log(
+        `[${this.instanceId}] Received ${payload.eventKey} status=${payload.data.status} ${payload.resourceIdentifier}`,
+      );
+
+      if (this.eventProcessingDelayMs > 0) {
+        this.logger.log(
+          `[${this.instanceId}] Delaying event handling for ${this.eventProcessingDelayMs}ms`,
+        );
+        await this.delay(this.eventProcessingDelayMs);
+      }
+
       const deliveryId = crypto.randomUUID();
       const now = new Date().toISOString();
       const deliveryPayload = this.toWebhookDeliveryPayload(
@@ -52,9 +72,13 @@ export class WebhookConsumer implements OnModuleInit {
 
       await this.webhookDeliveryQueue.send(deliveryJob);
       this.logger.log(
-        `Published delivery execution job ${deliveryId} to ${WEBHOOK_DELIVERY_QUEUE}`,
+        `[${this.instanceId}] Published delivery execution job ${deliveryId} to ${WEBHOOK_DELIVERY_QUEUE}`,
       );
     });
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private toWebhookDeliveryPayload(

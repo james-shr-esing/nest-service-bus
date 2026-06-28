@@ -7,6 +7,10 @@ export type FundEventSource = 'fund';
 export type FundResourceType = 'deposit' | 'withdrawal';
 
 export type DepositEventKey =
+  | 'deposit.prepare'
+  | 'deposit.reviewing'
+  | 'deposit.processing'
+  | 'deposit.processed'
   | 'deposit.created'
   | 'deposit.failed'
   | 'deposit.completed'
@@ -20,7 +24,15 @@ export type WithdrawalEventKey =
 
 export type FundDomainEventKey = DepositEventKey | WithdrawalEventKey;
 
-export type DepositStatus = 'created' | 'failed' | 'completed' | 'blocked';
+export type DepositStatus =
+  | 'prepare'
+  | 'reviewing'
+  | 'processing'
+  | 'processed'
+  | 'created'
+  | 'failed'
+  | 'completed'
+  | 'blocked';
 export type WithdrawalStatus = 'created' | 'cancelled' | 'failed' | 'completed';
 export type WebhookDeliveryStatus =
   | 'PENDING'

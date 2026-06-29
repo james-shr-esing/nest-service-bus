@@ -1,11 +1,8 @@
 # Nest Service Bus Demo
 
-這個專案示範在 NestJS 中整合 Azure Service Bus queue/topic，並透過 `QueueModule` / `EventModule` 封裝 messaging 操作，讓 feature module 只依賴簡單的 `send` / `receive` 介面。
+這個專案示範在 NestJS 中透過 Azure 官方 SDK `@azure/service-bus` 整合 Azure Service Bus queue/topic，並透過 `QueueModule` / `EventModule` 封裝 messaging 操作，讓 feature module 只依賴簡單的 `send` / `receive` 介面。
 
-`USE_PACKAGE` 可切換兩種底層實作：
-
-- `azure-sdk`：直接使用 Azure 官方 SDK `@azure/service-bus`。
-- `nest-js-tools`：使用 `@nestjstools/messaging` 與 `@nestjstools/messaging-azure-service-bus-extension`。
+目前團隊決策固定使用 Azure SDK 串接。Fund transaction event 透過 topic 廣播，Webhook 透過 session-enabled subscription 收聽，並以 Azure Service Bus sessions 確保同一筆交易事件 FIFO。
 
 ## Architecture
 
@@ -93,31 +90,16 @@ export type WebhookDeliveryExecutionPayload = {
 
 Worker 收到 `deliveryId` 後，正式專案應從 persistence 讀取 delivery snapshot、endpoint snapshot 與 signing secret，再執行 POST。這個 demo 會從 in-memory store 讀取剛才建立的 payload snapshot。
 
-## Mode Behavior
+## Azure SDK Behavior
 
-### azure-sdk
-
-`azure-sdk` mode 直接使用 Azure SDK：
+本專案固定使用 Azure SDK：
 
 - `ServiceBusClient.createSender(queueName)` 發送 queue message
 - `ServiceBusClient.createReceiver(queueName).subscribe(...)` 接收 queue message
-- `EventModule` 的 Azure SDK adapter 用 `ServiceBusClient.createSender(topicName)` 廣播 topic message
-- `EventModule` 的 Azure SDK adapter 開啟 session 時會用 `ServiceBusClient.acceptNextSession(topicName, subscriptionName)` 訂閱 topic message
+- `EventModule` 用 `ServiceBusClient.createSender(topicName)` 廣播 topic message
+- `EventModule` 開啟 session 時用 `ServiceBusClient.acceptNextSession(topicName, subscriptionName)` 訂閱 topic message
 - handler 成功後 `completeMessage()`
 - handler 失敗時 `abandonMessage()`，讓 Azure Service Bus 可重試
-
-### nest-js-tools
-
-`nest-js-tools` mode 會在 AppModule 啟動時條件式載入 NestJSTools MessagingModule：
-
-- Event channel 使用 `Mode.TOPIC`、`topic`、`subscription` 設定
-- Queue channel 維持 `Mode.QUEUE`
-- 每個 destination 建立一組獨立 bus/channel
-- event bus/channel name 格式：`event.bus:<topicName>` / `event.channel:<topicName>`
-- queue bus/channel name 格式：`queue.bus:<queueName>` / `queue.channel:<queueName>`
-- routing key 使用 destination name，例如 `topic.fund.transaction.test`
-
-這樣 event topic 和 queue 不會共用同一個 bus，避免 dispatch 時送到錯誤 destination。Session-enabled event subscription 目前只支援 `USE_PACKAGE=azure-sdk`；`nest-js-tools` adapter 沒有使用 `acceptNextSession`。
 
 ## Queue / Event Flow
 
@@ -203,30 +185,24 @@ subscription.session.webhook.transaction.test
 
 `.env` 已被 `.gitignore` 排除，不會進版控。請依照實際 Azure Service Bus 設定調整。
 
-| Variable                              | Required | Default                                         | Description                                                         |
-| ------------------------------------- | -------- | ----------------------------------------------- | ------------------------------------------------------------------- |
-| `PORT`                                | No       | `3000`                                          | Nest HTTP server port                                               |
-| `USE_PACKAGE`                         | No       | `azure-sdk`                                     | Messaging package，可用 `azure-sdk` 或 `nest-js-tools`              |
-| `AZURE_SERVICE_BUS_CONNECTION_STRING` | Yes      | -                                               | Azure Service Bus connection string                                 |
-| `FUND_TRANSACTION_TOPIC_NAME`         | No       | `topic.fund.transaction.test`                   | Fund domain event notification topic name                           |
-| `FUND_TRANSACTION_SUBSCRIPTION_NAME`  | No       | `subscription.session.webhook.transaction.test` | 此 app 用來訂閱 Fund topic 的 subscription name                     |
-| `WEBHOOK_DELIVERY_QUEUE_NAME`         | Yes      | `webhook-delivery`                              | Webhook delivery execution queue name                               |
-| `FUND_PUBLISH_INTERVAL_MS`            | No       | `30000`                                         | FundModule 定期送出 domain event 的間隔毫秒                         |
-| `MESSAGING_DEBUG`                     | No       | `false`                                         | 只在 `USE_PACKAGE=nest-js-tools` 時使用，控制 NestJSTools debug log |
+| Variable                              | Required | Default                                         | Description                                     |
+| ------------------------------------- | -------- | ----------------------------------------------- | ----------------------------------------------- |
+| `PORT`                                | No       | `3000`                                          | Nest HTTP server port                           |
+| `AZURE_SERVICE_BUS_CONNECTION_STRING` | Yes      | -                                               | Azure Service Bus connection string             |
+| `FUND_TRANSACTION_TOPIC_NAME`         | No       | `topic.fund.transaction.test`                   | Fund domain event notification topic name       |
+| `FUND_TRANSACTION_SUBSCRIPTION_NAME`  | No       | `subscription.session.webhook.transaction.test` | 此 app 用來訂閱 Fund topic 的 subscription name |
+| `WEBHOOK_DELIVERY_QUEUE_NAME`         | Yes      | `webhook-delivery`                              | Webhook delivery execution queue name           |
+| `FUND_PUBLISH_INTERVAL_MS`            | No       | `30000`                                         | FundModule 定期送出 domain event 的間隔毫秒     |
 
 Example `.env`：
 
 ```env
 PORT=3000
-
-USE_PACKAGE=azure-sdk
 AZURE_SERVICE_BUS_CONNECTION_STRING=Endpoint=sb://your-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=replace-with-your-key
 FUND_TRANSACTION_TOPIC_NAME=topic.fund.transaction.test
 FUND_TRANSACTION_SUBSCRIPTION_NAME=subscription.session.webhook.transaction.test
 WEBHOOK_DELIVERY_QUEUE_NAME=webhook-delivery
 FUND_PUBLISH_INTERVAL_MS=30000
-
-MESSAGING_DEBUG=false
 ```
 
 ## Azure Resources
@@ -258,18 +234,13 @@ npm install
 2. 設定 `.env`
 
 ```env
-USE_PACKAGE=azure-sdk
 AZURE_SERVICE_BUS_CONNECTION_STRING=Endpoint=sb://...
 FUND_TRANSACTION_TOPIC_NAME=topic.fund.transaction.test
 FUND_TRANSACTION_SUBSCRIPTION_NAME=subscription.session.webhook.transaction.test
 WEBHOOK_DELIVERY_QUEUE_NAME=webhook-delivery
 ```
 
-目前 Fund transaction event 啟用了 Azure Service Bus sessions，這條路徑只支援 Azure SDK adapter。若要測 NestJSTools adapter，需先改成非 session subscription 並關閉 EventModule 的 `useSessions` 設定，再改成：
-
-```env
-USE_PACKAGE=nest-js-tools
-```
+目前 Fund transaction event 啟用了 Azure Service Bus sessions，請確認 Azure 上的 subscription 建立時已啟用 sessions。
 
 3. 確認 Azure Service Bus topic、subscription 與 queue 已存在
 
@@ -317,8 +288,7 @@ npm test -- --runInBand
 
 ## Notes
 
-- `USE_PACKAGE` 只支援 `azure-sdk` 與 `nest-js-tools`；若設定成其他值，啟動時會直接丟出 `Unsupported USE_PACKAGE`。
-- `azure-sdk` mode 對 Azure Service Bus 原生 ack 行為控制較直接。
-- `nest-js-tools` mode 保留 message bus/decorator abstraction，並透過 destination name 作為 routing key；目前不支援 session-enabled event subscription。
+- 本專案固定使用 Azure SDK，已移除 adapter 切換實作。
+- Azure SDK 對 Azure Service Bus 原生 ack 行為控制較直接。
 - Demo 沒有 DB persistence，因此用 in-memory store 模擬保存 `WebhookDeliveryPayload` snapshot；正式專案應在 DB commit delivery snapshot 後再發布 execution job。
-- Feature module 不直接依賴 Azure SDK 或 NestJSTools；work queue 依賴 `Queue<TPayload>`，domain event 依賴 `EventBus<TPayload>`，因此可以用環境變數切換底層實作。
+- Feature module 不直接依賴 Azure SDK；work queue 依賴 `Queue<TPayload>`，domain event 依賴 `EventBus<TPayload>`，底層串接集中在 `src/queue` 與 `src/event`。

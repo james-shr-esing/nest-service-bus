@@ -6,14 +6,13 @@ These scenarios use the current app flow:
 FundProducer -> topic subscription -> WebhookConsumer -> delivery queue -> DeliveryConsumer
 ```
 
-Run with `USE_PACKAGE=azure-sdk`. The current event flow uses Azure Service Bus sessions, and `nest-js-tools` mode intentionally does not support session receivers in this project.
+The project now uses Azure SDK directly. The current event flow uses Azure Service Bus sessions, so the topic subscription must be session-enabled in Azure.
 
 ## Test Knobs
 
 Set these environment variables per terminal:
 
 ```powershell
-$env:USE_PACKAGE = 'azure-sdk'
 $env:AZURE_SERVICE_BUS_CONNECTION_STRING = 'Endpoint=sb://...'
 $env:FUND_TRANSACTION_TOPIC_NAME = 'topic.fund.transaction.test'
 $env:FUND_TRANSACTION_SUBSCRIPTION_NAME = 'subscription.session.webhook.transaction.test'

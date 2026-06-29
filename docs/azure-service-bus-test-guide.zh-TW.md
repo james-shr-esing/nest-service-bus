@@ -6,14 +6,13 @@
 FundProducer -> fund transaction topic/subscription -> WebhookConsumer -> webhook delivery queue -> DeliveryConsumer
 ```
 
-請使用 `USE_PACKAGE=azure-sdk`。目前 fund transaction event 有啟用 Azure Service Bus sessions，`nest-js-tools` 模式在本專案中不支援 session receiver。
+目前專案固定使用 Azure SDK 串接。Fund transaction event 有啟用 Azure Service Bus sessions，subscription 必須在 Azure 上啟用 session。
 
 ## 共用前置設定
 
 每個終端機都先設定這些環境變數，連到同一組 Azure Service Bus resources：
 
 ```powershell
-$env:USE_PACKAGE = 'azure-sdk'
 $env:AZURE_SERVICE_BUS_CONNECTION_STRING = 'Endpoint=sb://...'
 $env:FUND_TRANSACTION_TOPIC_NAME = 'topic.fund.transaction.test'
 $env:FUND_TRANSACTION_SUBSCRIPTION_NAME = 'subscription.session.webhook.transaction.test'
@@ -220,4 +219,3 @@ $env:WEBHOOK_EVENT_PROCESSING_DELAY_MS = '0'
 $env:WEBHOOK_DELIVERY_FAIL_FIRST_ATTEMPTS = '0'
 $env:WEBHOOK_DELIVERY_PROCESSING_DELAY_MS = '0'
 ```
-

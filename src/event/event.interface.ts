@@ -1,5 +1,3 @@
-export type MessagingPackage = 'azure-sdk' | 'nest-js-tools';
-
 export type EventHandler<TPayload> = (
   payload: TPayload,
 ) => Promise<void> | void;
@@ -12,7 +10,6 @@ export interface EventBus<TPayload = unknown> {
 }
 
 export interface EventModuleOptions<TPayload = unknown> {
-  usePackage: MessagingPackage;
   connectionUrl: string;
   topicName: string;
   subscriptionName: string;
